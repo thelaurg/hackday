@@ -7,6 +7,7 @@
 
 
 // Basic Spark imports
+import _root_.kafka.producer.EventProducer
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
 
@@ -47,9 +48,9 @@ object KafkaSparkCassandra {
     // connect directly to Cassandra from the driver to create the keyspace
     val cluster = Cluster.builder().addContactPoint(cassandra_host).withCredentials(cassandra_user, cassandra_pass).build()
     val session = cluster.connect()
-    session.execute("CREATE KEYSPACE IF NOT EXISTS ic_example WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
-    session.execute("CREATE TABLE IF NOT EXISTS ic_example.word_count (word text, ts timestamp, count int, PRIMARY KEY(word, ts)) ")
-    session.execute("TRUNCATE ic_example.word_count")
+    session.execute("CREATE KEYSPACE IF NOT EXISTS purelive WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
+    session.execute("CREATE TABLE IF NOT EXISTS purelive.delivery_report (id int, opened int, clicked int, ts timestamp, PRIMARY KEY(id, ts)) ")
+    session.execute("TRUNCATE purelive.delivery_report")
     session.close()
 
     // Create spark streaming context with 5 second batch interval
@@ -66,8 +67,13 @@ object KafkaSparkCassandra {
     // Create direct kafka stream with brokers and topics
     val topicsSet = Set[String] (kafka_topic)
     val kafkaParams = Map[String, String]("metadata.broker.list" -> kafka_broker)
+
+    EventProducer("mailId", kafka_topic, kafka_broker).send
+
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet)
+
+    println("MESSAGES >>>>>>>>", messages)
 
     // Create the processing logic
     // the spark processing isn't actually run until the streaming context is started
@@ -80,11 +86,11 @@ object KafkaSparkCassandra {
       .map(w => (w, 1L)).reduceByKey(_ + _) // count by word
       .map({case (w,c) => (w,new Date().getTime(),c)}) // add the current time to the tuple for saving
 
-    wordCounts.print() //print it so we can see something is happening
+    wordCounts.print() //print it so we can see something is happening*/
 
     // insert the records from  rdd to the ic_example.word_count table in Cassandra
     // SomeColumns() is a helper class from the cassandra connector that allows the fields of the rdd to be mapped to the columns in the table
-    wordCounts.saveToCassandra("ic_example", "word_count", SomeColumns("word" as "_1", "ts" as "_2", "count" as "_3"))
+   // wordCounts.saveToCassandra("ic_example", "word_count", SomeColumns("word" as "_1", "ts" as "_2", "count" as "_3"))
 
 
     // Now we have set up the processing logic it's time to do some processing
@@ -97,7 +103,7 @@ object KafkaSparkCassandra {
     val sc = new SparkContext(sparkConf) // create a new spark core context
     val csc = new CassandraSQLContext(sc) // wrap the base context in a Cassandra SQL context
     val rdd1 = csc.sql("SELECT * from ic_example.word_count") // select the data from the table
-    rdd1.show(100) // print the first 100 records from the result
+    //rdd1.show(100) // print the first 100 records from the result
     sc.stop()
 
   }
