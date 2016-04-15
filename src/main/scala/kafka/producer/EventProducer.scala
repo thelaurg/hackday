@@ -6,9 +6,10 @@ import kafka.producer.Producer
 import scala.util.Random
 import kafka.producer.KeyedMessage
 
+
 case class EventProducer(eventType: String, topic: String, brokerList: String) {
 
-  def send(random: => String) = {
+  def send = {
     val props =  new Properties()
 
     props.put("metadata.broker.list", brokerList)
@@ -20,7 +21,7 @@ case class EventProducer(eventType: String, topic: String, brokerList: String) {
     val producer = new Producer[String, String](config)
 
     (1 to 10000).foreach { _ =>
-      val data = new KeyedMessage[String, String](topic, eventType, random)
+      val data = new KeyedMessage[String, String](topic, eventType, new Random().nextString(10))
 
       producer.send(data)
     }
